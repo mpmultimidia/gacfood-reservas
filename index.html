@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reserve sua mesa</title>
+<style>
+  body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:20px; }
+  .card { max-width: 480px; margin: 0 auto; background:#fff; border-radius:10px; padding:24px; box-shadow:0 2px 10px rgba(0,0,0,.08); }
+  h1 { font-size: 22px; margin-top:0; }
+  label { display:block; font-weight:bold; margin:14px 0 6px; font-size:14px; }
+  input, select, textarea { width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; font-size:14px; }
+  button { margin-top:20px; width:100%; padding:14px; background:#28a745; color:#fff; border:none; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; }
+  button:disabled { background:#aaa; cursor:not-allowed; }
+  .msg { margin-top:14px; padding:10px; border-radius:6px; font-size:14px; }
+  .ok { background:#d4edda; color:#155724; }
+  .erro { background:#f8d7da; color:#721c24; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>📅 Reserve sua mesa</h1>
+  <form id="formReserva">
+    <label>Nome completo *</label>
+    <input type="text" id="nome_cliente" required>
+
+    <label>WhatsApp *</label>
+    <input type="tel" id="whatsapp" placeholder="(21) 90000-0000" required>
+
+    <label>E-mail</label>
+    <input type="email" id="email">
+
+    <label>Endereço</label>
+    <input type="text" id="endereco">
+
+    <label>Quantidade de pessoas *</label>
+    <input type="number" id="quantidade_pessoas" min="1" value="2" required>
+
+    <label>Data da reserva *</label>
+    <input type="date" id="data_reserva" required>
+
+    <label>Horário *</label>
+    <select id="hora_inicio" required>
+      <option value="">Selecione a data primeiro</option>
+    </select>
+
+    <label>Observações</label>
+    <textarea id="observacoes" rows="3"></textarea>
+
+    <button type="submit" id="btnEnviar">Confirmar reserva</button>
+  </form>
+  <div id="mensagem"></div>
+</div>
+
+<!-- Biblioteca oficial do Supabase, carregada via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// <<< TROQUE ESSAS DUAS LINHAS pelos dados do SEU projeto Supabase >>>
+const SUPABASE_URL = 'https://ufykdllofvncpmdjxkmx.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jaO0Qwh7m4xlBUZOlGe3wQ_9nAnG1Kk';
+
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const inputData = document.getElementById('data_reserva');
+const inputPessoas = document.getElementById('quantidade_pessoas');
+const selectHora = document.getElementById('hora_inicio');
+const mensagemDiv = document.getElementById('mensagem');
+const btnEnviar = document.getElementById('btnEnviar');
+
+const hoje = new Date().toISOString().split('T')[0];
+inputData.min = hoje;
+
+async function carregarHorarios() {
+  if (!inputData.value) return;
+  selectHora.innerHTML = '<option value="">Carregando...</option>';
+
+  const { data, error } = await supabaseClient.rpc('horarios_disponiveis', {
+    p_data: inputData.value,
+    p_pessoas: parseInt(inputPessoas.value) || 1
+  });
+
+  if (error || !data || !data.length) {
+    selectHora.innerHTML = '<option value="">Nenhum horário disponível</option>';
+    return;
+  }
+
+  selectHora.innerHTML = '<option value="">Selecione um horário</option>' +
+    data.map(h => {
+      const hora = h.hora_inicio.substring(0, 5);
+      const fim = h.hora_fim.substring(0, 5);
+      const disabled = !h.disponivel ? 'disabled' : '';
+      const rotulo = !h.disponivel ? hora + ' (indisponível)' : hora + ' - ' + fim;
+      return '<option value="' + hora + '" ' + disabled + '>' + rotulo + '</option>';
+    }).join('');
+}
+
+inputData.addEventListener('change', carregarHorarios);
+inputPessoas.addEventListener('change', carregarHorarios);
+
+document.getElementById('formReserva').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  mensagemDiv.innerHTML = '';
+  btnEnviar.disabled = true;
+  btnEnviar.textContent = 'Enviando...';
+
+  const { data, error } = await supabaseClient.rpc('criar_reserva', {
+    p_nome_cliente: document.getElementById('nome_cliente').value,
+    p_whatsapp: document.getElementById('whatsapp').value,
+    p_quantidade_pessoas: parseInt(inputPessoas.value),
+    p_data_reserva: inputData.value,
+    p_hora_inicio: selectHora.value,
+    p_telefone: null,
+    p_endereco: document.getElementById('endereco').value || null,
+    p_email: document.getElementById('email').value || null,
+    p_observacoes: document.getElementById('observacoes').value || null
+  });
+
+  if (error || !data || !data.ok) {
+    const texto = (data && data.erro) || (error && error.message) || 'Erro ao criar reserva';
+    mensagemDiv.innerHTML = '<div class="msg erro">' + texto + '</div>';
+  } else {
+    mensagemDiv.innerHTML = '<div class="msg ok">Reserva confirmada! Código: <strong>' + data.codigo_reserva + '</strong></div>';
+    document.getElementById('formReserva').reset();
+    selectHora.innerHTML = '<option value="">Selecione a data primeiro</option>';
+  }
+
+  btnEnviar.disabled = false;
+  btnEnviar.textContent = 'Confirmar reserva';
+});
+</script>
+</body>
+</html>
